@@ -8,7 +8,6 @@ Requirements
 -------------
 mtgox_mon requires the following modules to be installed:
  * websocket_client, found at https://github.com/liris/websocket-client
- * BeautifulSoup4, found at http://www.crummy.com/software/BeautifulSoup/
  * PyGTK, found at http://www.pygtk.org/
 
 The PyGTK dependency can be mitigated by changing the `screenshot.py` file to the following:

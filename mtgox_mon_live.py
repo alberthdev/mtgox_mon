@@ -16,8 +16,6 @@ import ConfigParser
 
 import screenshot
 
-from bs4 import BeautifulSoup
-
 global exitNow
 exitNow = False
 
