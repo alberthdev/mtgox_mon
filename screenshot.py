@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# PyMtGoxMon v1.0 - Python-based monitor for MtGox BTC trading!
+# Copyright (C) 2013 Albert Huang.
+# Under GPL v3.
+# 
+# Screenshot module for PyMtGoxMon. Requires pygtk to run!
 # screenshot.py
 import gtk.gdk
 
