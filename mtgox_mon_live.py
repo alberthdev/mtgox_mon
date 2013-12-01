@@ -1,8 +1,8 @@
 #!/usr/bin/env python
+# -*- coding: utf8 -*-
 # PyMtGoxMon v1.0 - Python-based monitor for MtGox BTC trading!
 # Copyright (C) 2013 Albert Huang.
 # Under GPL v3.
-# -*- coding: utf8 -*-
 import urllib2, json
 import datetime
 import time
