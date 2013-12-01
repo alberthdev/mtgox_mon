@@ -16,7 +16,6 @@ import ConfigParser
 
 import screenshot
 
-from ws4py.client.threadedclient import WebSocketClient
 from bs4 import BeautifulSoup
 
 global exitNow
