@@ -1,0 +1,16 @@
+# Ignore generated screenshot files
+screenshot/*.png
+
+# Ignore *.pyc, *.pyo, *.pyd
+*.py[cod]
+
+# PyInstaller stuff
+build/
+dist/
+
+# Log and configuration
+mtgox_mon_live.cfg
+mtgox_mon_live.log
+
+# Ignore .spec file for now
+mtgox_mon_live.spec

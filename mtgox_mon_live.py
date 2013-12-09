@@ -23,42 +23,21 @@ import time
 import websocket
 import thread
 
+import threading
+
 import re
 
 import ConfigParser
 
 import screenshot
+import sound
+import color
 
-global exitNow
-exitNow = False
+import os
 
-def cprint(str):
-	global logfh
-	now = datetime.datetime.now()
-	timeStr = now.strftime("%Y-%m-%d %H:%M:%S")
-	noColorStr = re.sub("(\033\[)(.+?)(m)", '', str)
-	logfh.write("[%s] [PyMtGoxMon] %s\n" % (now, noColorStr))
-	logfh.flush()
-	print "[%s] [PyMtGoxMon] %s" % (now, str)
-
-def celebrate_high_last():
-	now = datetime.datetime.now()
-	timeStr = now.strftime("%Y-%m-%d_%H:%M:%S")
-	screenshot.screenshot("HIGH_LAST_%s.png" % timeStr)
-
-def celebrate_high_bid():
-	now = datetime.datetime.now()
-	timeStr = now.strftime("%Y-%m-%d_%H:%M:%S")
-	screenshot.screenshot("HIGH_BID_%s.png" % timeStr)
-
-def save_config():
-	try:
-		fh = open('mtgox_mon_live.cfg', "w")
-		config.write(fh)
-		fh.close()
-	except:
-		cprint("[CLIENT] WARNING: Unable to save config! Highest last price is %.2f, and highest bid price is %.2f!", highest_last_price, highest_bid_price)
-
+#######################################################################
+# UTF-8 terminal initialization
+#######################################################################
 import codecs, sys
 
 reload(sys)
@@ -85,6 +64,58 @@ if sys.platform == 'win32':
 sys.stdout = codecs.getwriter('utf8')(sys.stdout)
 sys.stderr = codecs.getwriter('utf8')(sys.stderr)
 
+#######################################################################
+# Variables and Functions
+#######################################################################
+WEBSOCKET_URL = "wss://websocket.mtgox.com:443/"
+global exitNow
+exitNow = False
+
+global ENABLE_COLOR, ENABLE_SOUND, ENABLE_SCREENSHOT, screenshot_path
+ENABLE_COLOR = True
+ENABLE_SOUND = True
+ENABLE_SCREENSHOT = True
+screenshot_path = "screenshots"
+
+def cprint(str):
+	global logfh, ENABLE_COLOR
+	now = datetime.datetime.now()
+	timeStr = now.strftime("%Y-%m-%d %H:%M:%S")
+	noColorStr = re.sub("(\033\[)(.+?)(m)", '', str)
+	logfh.write("[%s] [PyMtGoxMon] %s\n" % (now, noColorStr))
+	logfh.flush()
+	if ENABLE_COLOR:
+		print "[%s] [PyMtGoxMon] %s" % (now, str)
+	else:
+		print "[%s] [PyMtGoxMon] %s" % (now, noColorStr)
+
+def celebrate_high_last():
+	global ENABLE_SOUND, ENABLE_SCREENSHOT, screenshot_path
+	now = datetime.datetime.now()
+	timeStr = now.strftime("%Y-%m-%d_%H:%M:%S")
+	if ENABLE_SCREENSHOT:
+		screenshot.screenshot(os.path.join(screenshot_path, "HIGH_LAST_%s.png") % timeStr)
+	if ENABLE_SOUND:
+		sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "sharp_echo_AMP.wav"))
+
+def celebrate_high_bid():
+	global ENABLE_SOUND, ENABLE_SCREENSHOT, screenshot_path
+	now = datetime.datetime.now()
+	timeStr = now.strftime("%Y-%m-%d_%H:%M:%S")
+	if ENABLE_SCREENSHOT:
+		screenshot.screenshot(os.path.join(screenshot_path, "HIGH_BID_%s.png") % timeStr)
+	if ENABLE_SOUND:
+		sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "sharp_echo_AMP.wav"))
+
+def save_config():
+	try:
+		fh = open('mtgox_mon_live.cfg', "w")
+		config.write(fh)
+		fh.close()
+	except:
+		cprint("[CLIENT] WARNING: Unable to save config! Highest last price is %.2f, and highest bid price is %.2f!", highest_last_price, highest_bid_price)
+
+
 START_POST	=	[
 					{ "channel" : "ticker.BTCUSD", "op" : "mtgox.subscribe" },
 					{ "channel" : "trade.lag", "op" : "mtgox.subscribe" },
@@ -106,41 +137,67 @@ except:
 
 cprint("[CLIENT] Opened log file for writing...")
 
-config = ConfigParser.ConfigParser()
-try:
-	cprint("[CLIENT] Looking for configuration file...")
-	tfh = open('mtgox_mon_live.cfg', "r")
-	config.read('mtgox_mon_live.cfg')
-except:
-	cprint("[CLIENT] WARNING: Couldn't find or read config file! If this is your")
-	cprint("[CLIENT] first time running this, this is normal!")
-	cprint("[CLIENT] Creating configuration file...")
-	config.add_section("prices")
-	config.set("prices", "highest_last_price", 0)
-	config.set("prices", "highest_bid_price", 0)
-	fh = open('mtgox_mon_live.cfg', "w")
-	config.write(fh)
-	fh.close()
+#######################################################################
+# Frozen check
+#######################################################################
+frozen = getattr(sys, 'frozen', '')
 
-cprint("[CLIENT] Reading configuration file!")
+if not frozen:
+	# not frozen: in regular python interpreter
+	SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+	cprint("[CLIENT] Initializing from script...")
+elif frozen in ('dll', 'console_exe', 'windows_exe'):
+	# py2exe:
+	SCRIPT_DIR = os.path.dirname(sys.executable)
+	cprint("[CLIENT] Initializing from compiled Windows executable...")
+elif frozen in ('macosx_app',):
+	# py2app:
+	# Notes on how to find stuff on MAC, by an expert (Bob Ippolito):
+	# http://mail.python.org/pipermail/pythonmac-sig/2004-November/012121.html
+	SCRIPT_DIR = os.environ['RESOURCEPATH']
+	cprint("[CLIENT] Initializing from Mac compiled executable...")
+elif frozen:
+	SCRIPT_DIR = os.path.dirname(sys.executable)
+	cprint("[CLIENT] Initializing from compiled executable...")
 
-global highest_last_price, highest_bid_price
-highest_last_price = float(config.get("prices", "highest_last_price"))
-highest_bid_price = float(config.get("prices", "highest_bid_price"))
+#SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 
-cprint("[CLIENT] Loaded configuration file!")
-cprint("[CLIENT] Highest last bid price is %.2f, and highest bid price is %.2f!" % (highest_last_price, highest_bid_price))
+#######################################################################
+# Threading Stuff
+#######################################################################
+class WSThread(threading.Thread):
+	def __init__(self):
+		threading.Thread.__init__(self)
+		self.websocket = None
+		self.doStop = False
+	
+	def run(self):
+		while self.doStop != True:
+			try:
+				self.websocket = connect_ws()
+				self.websocket.run_forever()
+				if self.doStop != True:
+					cprint("|CLIENT| Detected that the connection closed, trying to restart...")
+				else:
+					cprint("|CLIENT| Detected program termination, stopping.")
+			except:
+				pass
+		cprint("|CLIENT| Terminating thread...")
+	def restart(self):
+		self.websocket.close()
+	def stop(self):
+		self.doStop = True
+		self.websocket.close()
 
-global old_lag, old_buy, old_last_buy, diff
-global lag_time
-old_lag = 0
-old_buy = 0
-old_last_buy = 0
-diff = 0
-lag_time = 0
+#######################################################################
+# Websocket Functions
+#######################################################################
 def on_message(ws, msg):
 	global old_lag, old_buy, old_last_buy, diff, lag_time
 	global highest_last_price, highest_bid_price
+	global lastMsg, cur_lag
+	
+	lastMsg = time.time()
 	
 	raw_msg = str(msg)
 	jdata = json.loads(raw_msg)
@@ -161,9 +218,11 @@ def on_message(ws, msg):
 			if diff < 0:
 				sign = "-"
 				cstart = "\033[31m"
+				sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "negative_AMP.wav"))
 			elif diff > 0:
 				sign = "+"
 				cstart = "\033[32m"
+				sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "positive_AMP.wav"))
 			else:
 				sign = "="
 				cstart = "\033[33m"
@@ -193,9 +252,13 @@ def on_message(ws, msg):
 			
 			cend = "\033[0m"
 			if diff < 0:
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "negative_AMP.wav"))
 				sign = "-"
 				cstart = "\033[31m"
 			elif diff > 0:
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "positive_AMP.wav"))
 				sign = "+"
 				cstart = "\033[32m"
 			else:
@@ -235,9 +298,13 @@ def on_message(ws, msg):
 			if trade_type == "bid":
 				cstart = "\033[32m"
 				sym = "^"
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "positiveshort_AMP.wav"))
 			elif trade_type == "ask":
 				cstart = "\033[31m"
 				sym = "v"
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "lose_AMP.wav"))
 			else:
 				cstart = "\033[33m"
 				sym = "?"
@@ -254,11 +321,7 @@ def on_error(ws, error):
 	print error
 
 def on_close(ws):
-	global exitNow
-	if exitNow:
-		cprint("[ CONN ] Connection closed!")
-	else:
-		cprint("[ CONN ] Connection closed! Trying to restart...")
+	cprint("[ CONN ] Connection closed!")
 
 def on_open(ws):
 	def run(*args):
@@ -279,16 +342,111 @@ def connect_ws():
 								on_error = on_error,
 								on_close = on_close)
 	ws.on_open = on_open
-	ws.run_forever()
+	return ws
 
-WEBSOCKET_URL = "wss://websocket.mtgox.com:443/"
+#######################################################################
+# Startup
+#######################################################################
+config = ConfigParser.ConfigParser()
+try:
+	cprint("[CLIENT] Looking for configuration file...")
+	tfh = open('mtgox_mon_live.cfg', "r")
+	config.read('mtgox_mon_live.cfg')
+except:
+	cprint("[CLIENT] WARNING: Couldn't find or read config file! If this is your")
+	cprint("[CLIENT] first time running this, this is normal!")
+	cprint("[CLIENT] Creating configuration file...")
+	config.add_section("prices")
+	config.set("prices", "highest_last_price", 0)
+	config.set("prices", "highest_bid_price", 0)
+	config.add_section("config")
+	config.set("config", "color", 1)
+	config.set("config", "sound", 1)
+	config.set("config", "screenshot", 1)
+	config.set("config", "screenshot_path", "screenshots")
+	fh = open('mtgox_mon_live.cfg', "w")
+	config.write(fh)
+	fh.close()
+	config.read('mtgox_mon_live.cfg')
+
+cprint("[CLIENT] Reading configuration file!")
+
+## TODO: replace this mess with an automated config file fixer, using
+##       gigantic dict
+
+if not config.has_section("prices"):
+	cprint("[CLIENT] WARNING: Configuration file is missing 'prices' section!")
+	cprint("[CLIENT]          Will re-add the 'config' section.")
+	config.add_section("prices")
+	config.set("prices", "highest_last_price", 0)
+	config.set("prices", "highest_bid_price", 0)
+	fh = open('mtgox_mon_live.cfg', "w")
+	config.write(fh)
+	fh.close()
+	config.read('mtgox_mon_live.cfg')
+
+if not config.has_section("config"):
+	cprint("[CLIENT] WARNING: Configuration file is missing 'config' section!")
+	cprint("[CLIENT]          Will re-add the 'config' section.")
+	config.add_section("config")
+	config.set("config", "color", 1)
+	config.set("config", "sound", 1)
+	config.set("config", "screenshot", 1)
+	config.set("config", "screenshot_path", "screenshots")
+	fh = open('mtgox_mon_live.cfg', "w")
+	config.write(fh)
+	fh.close()
+	config.read('mtgox_mon_live.cfg')
+
+global highest_last_price, highest_bid_price
+highest_last_price = float(config.get("prices", "highest_last_price"))
+highest_bid_price = float(config.get("prices", "highest_bid_price"))
+
+ENABLE_COLOR = (int(config.get("config", "color")) == 1)
+ENABLE_SOUND = (int(config.get("config", "sound")) == 1)
+ENABLE_SCREENSHOT = (int(config.get("config", "screenshot")) == 1)
+screenshot_path = config.get("config", "screenshot_path")
+
+cprint("[CLIENT] Loaded configuration file!")
+cprint("[CLIENT] Highest last bid price is %.2f, and highest bid price is %.2f!" % (highest_last_price, highest_bid_price))
+
+global old_lag, old_buy, old_last_buy, diff
+global lag_time
+global lastMsg, cur_lag
+
+lastMsg = time.time()
+cur_lag = 0
+
+old_lag = 0
+old_buy = 0
+old_last_buy = 0
+diff = 0
+lag_time = 0
+
+#######################################################################
+# Main Loop
+#######################################################################
 
 if __name__ == "__main__":
 	try:
 		#websocket.enableTrace(True)
-		connect_ws()
+		wsThread = WSThread()
+		wsThread.start()
+		lastMsg = time.time()
+		# Watchdog
+		while True:
+			if (time.time() - lastMsg) >= ((cur_lag * 5) + 10):
+				cprint("[CLIENT] No messages for the past %i seconds, restarting." % (time.time() - lastMsg))
+				wsThread.restart()
+			#else:
+				#pass
+				#cprint("[CLIENT] Last message: %i seconds ago (expected delay: %.2f, lag: %.2f)" % ((time.time() - lastMsg), (cur_lag * 5) + 10, cur_lag))
+			time.sleep(1)
+		#cprint("[CLIENT] Detected that the connection closed, trying to restart...")
 	except KeyboardInterrupt:
 		cprint("[CLIENT] Detected keyboard interrupt (CTRL-C), exiting.")
+		wsThread.stop()
+		wsThread.join()
 		try:
 			fh = open('mtgox_mon_live.cfg', "w")
 			config.write(fh)
@@ -296,12 +454,14 @@ if __name__ == "__main__":
 		except:
 			cprint("[CLIENT] WARNING: Unable to save config! Highest last price is %.2f, and highest bid price is %.2f!", highest_last_price, highest_bid_price)
 		try:
-			logfh.close()
-		except:
-			pass
-		try:
 			exitNow = True
 			cprint("[CLIENT] Closing connection to API server...")
 			ws.close()
 		except:
 			pass
+		cprint("[CLIENT] Terminating.")
+		try:
+			logfh.close()
+		except:
+			pass
+	print "Thanks for using mtgox_mon!"

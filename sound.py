@@ -12,28 +12,24 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 # 
-# Screenshot module for PyMtGoxMon. Requires pygtk to run!
-# screenshot.py
+# Simple sound module for PyMtGoxMon. Requires pygame to run!
+# sound.py
 # 
 
 try:
-	import gtk.gdk
-	SCREENSHOT_ENABLED = True
+	import pygame
+	SOUND_ENABLED = True
 except:
-	print "WARNING: PyGTK could not be loaded! Screenshots will be disabled."
+	print "WARNING: PyGame could not be loaded! Sound playback will be disabled."
 	#import traceback
 	#print traceback.format_exc()
-	SCREENSHOT_ENABLED = False
+	SOUND_ENABLED = False
 
-def screenshot(file_name):
-	if SCREENSHOT_ENABLED:
-		w = gtk.gdk.get_default_root_window()
-		sz = w.get_size()
-		print "The size of the window is %d x %d" % sz
-		pb = gtk.gdk.Pixbuf(gtk.gdk.COLORSPACE_RGB,False,8,sz[0],sz[1])
-		pb = pb.get_from_drawable(w,w.get_colormap(),0,0,0,0,sz[0],sz[1])
-		if (pb != None):
-			pb.save(file_name,"png")
-			print "Screenshot saved to %s." % file_name
-		else:
-			print "Unable to get the screenshot."
+# Do some initializations
+if SOUND_ENABLED:
+	pygame.mixer.init()
+
+def play_sound(filename):
+	if SOUND_ENABLED:
+		sound = pygame.mixer.Sound(filename)
+		sound.play()
