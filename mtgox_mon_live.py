@@ -218,11 +218,13 @@ def on_message(ws, msg):
 			if diff < 0:
 				sign = "-"
 				cstart = "\033[31m"
-				sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "negative_AMP.wav"))
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "negative_AMP.wav"))
 			elif diff > 0:
 				sign = "+"
 				cstart = "\033[32m"
-				sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "positive_AMP.wav"))
+				if ENABLE_SOUND:
+					sound.play_sound(os.path.join(SCRIPT_DIR, "sounds", "positive_AMP.wav"))
 			else:
 				sign = "="
 				cstart = "\033[33m"
